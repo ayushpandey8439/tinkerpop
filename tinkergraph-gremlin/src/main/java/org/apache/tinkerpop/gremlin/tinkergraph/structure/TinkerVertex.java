@@ -40,6 +40,7 @@ public class TinkerVertex extends TinkerElement implements Vertex {
     Set<TinkerVertex> parents = new HashSet<>();
     Set<TinkerVertex> children = new HashSet<>();
     Set<TinkerVertex> criticalAncestors = new HashSet<>();
+    boolean isLabelled = false;
 
     protected Map<String, List<VertexProperty>> properties;
     // Edges should be used by non-transaction Graph due to performance
@@ -68,6 +69,10 @@ public class TinkerVertex extends TinkerElement implements Vertex {
         this.allowNullPropertyValues = graph.features().vertex().supportsNullPropertyValues();
     }
 
+    public List<Object> getPathLabel(){
+        return pathLabel;
+    }
+
 
     public void recomputeLabel(Set<Object> visited) {
         if(visited.contains(id)) {
@@ -76,22 +81,26 @@ public class TinkerVertex extends TinkerElement implements Vertex {
         visited.add(id);
         List<Object> oldPathLabel = new ArrayList<>(pathLabel);
         pathLabel.clear();
-        for(TinkerVertex parent : parents) {
+        for(TinkerVertex parent : this.parents) {
+            if(!parent.isLabelled){
+                continue;
+            }
             if(pathLabel.isEmpty()){
                 pathLabel.addAll(parent.pathLabel);
             } else {
                pathLabel.retainAll(parent.pathLabel);
             }
-            if(!pathLabel.contains(id)){
-                pathLabel.add(id);
-            }
-            if(!pathLabel.equals(oldPathLabel)){
-                for(TinkerVertex child : children) {
-                    child.recomputeLabel(visited);
-                }
-            }
-            visited.remove(id);
         }
+        if(!pathLabel.contains(id)){
+            pathLabel.add(id);
+        }
+        isLabelled = true;
+        if(!pathLabel.equals(oldPathLabel) || parents.isEmpty()) { // If the label has changed or this vertex is the root.
+            for(TinkerVertex child : children) {
+                child.recomputeLabel(visited);
+            }
+        }
+        visited.remove(id);
 
     }
 

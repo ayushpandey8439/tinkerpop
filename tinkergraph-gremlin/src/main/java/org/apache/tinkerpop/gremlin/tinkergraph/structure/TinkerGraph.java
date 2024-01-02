@@ -45,6 +45,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentSkipListSet;
 
 /**
  * An in-memory (with optional persistence on calls to {@link #close()}), reference implementation of the property
@@ -75,6 +76,7 @@ public class TinkerGraph extends AbstractTinkerGraph {
 
     protected Map<Object, Vertex> vertices = new ConcurrentHashMap<>();
     protected Map<Object, Edge> edges = new ConcurrentHashMap<>();
+    public Set<TinkerVertex> roots = new HashSet<>();
 
     /**
      * An empty private constructor that initializes {@link TinkerGraph}.
@@ -146,9 +148,10 @@ public class TinkerGraph extends AbstractTinkerGraph {
             idValue = vertexIdManager.getNextId(this);
         }
 
-        final Vertex vertex = createTinkerVertex(idValue, label, this);
+        final TinkerVertex vertex = createTinkerVertex(idValue, label, this);
         ElementHelper.attachProperties(vertex, VertexProperty.Cardinality.list, keyValues);
         this.vertices.put(vertex.id(), vertex);
+        this.roots.add(vertex);
 
         return vertex;
     }
@@ -181,7 +184,8 @@ public class TinkerGraph extends AbstractTinkerGraph {
         addInEdge(inVertex, label, edge);
         inVertex.parents.add(outVertex);
         outVertex.children.add(inVertex);
-        inVertex.recomputeLabel(new HashSet<>());
+        roots.remove(inVertex);;
+
         return edge;
     }
 
@@ -206,6 +210,14 @@ public class TinkerGraph extends AbstractTinkerGraph {
         }
 
         this.edges.remove(edgeId);
+    }
+
+
+    public void labelGraph(){
+        for (TinkerVertex v : roots){
+            v.isLabelled = true;
+            v.recomputeLabel(new HashSet<>());
+        }
     }
 
     @Override
