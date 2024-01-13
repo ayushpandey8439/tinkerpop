@@ -18,15 +18,12 @@
  */
 package org.apache.tinkerpop.gremlin.tinkergraph.structure;
 
+import com.opencsv.CSVReader;
+import com.opencsv.exceptions.CsvException;
 import org.apache.commons.configuration2.BaseConfiguration;
 import org.apache.commons.configuration2.Configuration;
 import org.apache.tinkerpop.gremlin.process.traversal.TraversalStrategies;
-import org.apache.tinkerpop.gremlin.structure.Edge;
-import org.apache.tinkerpop.gremlin.structure.Element;
-import org.apache.tinkerpop.gremlin.structure.Graph;
-import org.apache.tinkerpop.gremlin.structure.Transaction;
-import org.apache.tinkerpop.gremlin.structure.Vertex;
-import org.apache.tinkerpop.gremlin.structure.VertexProperty;
+import org.apache.tinkerpop.gremlin.structure.*;
 import org.apache.tinkerpop.gremlin.structure.util.ElementHelper;
 import org.apache.tinkerpop.gremlin.structure.util.GraphFactory;
 import org.apache.tinkerpop.gremlin.structure.util.StringFactory;
@@ -34,7 +31,10 @@ import org.apache.tinkerpop.gremlin.tinkergraph.process.traversal.strategy.optim
 import org.apache.tinkerpop.gremlin.tinkergraph.process.traversal.strategy.optimization.TinkerGraphStepStrategy;
 import org.apache.tinkerpop.gremlin.tinkergraph.services.TinkerServiceRegistry;
 import org.apache.tinkerpop.gremlin.util.iterator.IteratorUtils;
+import org.javatuples.Pair;
 
+import java.io.FileReader;
+import java.io.IOException;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
@@ -73,7 +73,7 @@ public class TinkerGraph extends AbstractTinkerGraph {
     }};
 
     private final TinkerGraphFeatures features = new TinkerGraphFeatures();
-
+    private boolean bulkloading = false;
     protected Map<Object, Vertex> vertices = new ConcurrentHashMap<>();
     protected Map<Object, Edge> edges = new ConcurrentHashMap<>();
     public Set<TinkerVertex> roots = new HashSet<>();
@@ -135,6 +135,51 @@ public class TinkerGraph extends AbstractTinkerGraph {
 
     ////////////// STRUCTURE API METHODS //////////////////
 
+    public void loadGraphCSV(String Path){
+        bulkloading = true;
+        Set<Integer> vertices = new HashSet<>();
+        Set<Pair<Integer, Integer>> edges = new HashSet<>();
+        try (CSVReader reader = new CSVReader(new FileReader(Path))) {
+            List<String[]> records = reader.readAll();
+            for (String[] record : records) {
+                Vertex v1, v2;
+                if(!vertices.contains(Integer.parseInt(record[0]))){
+                    v1 = this.addVertex(T.id, Integer.parseInt(record[0]), T.label, "vertex");
+                    vertices.add(Integer.parseInt(record[0]));
+                } else {
+                    v1 = this.vertices(Integer.parseInt(record[0])).next();
+                }
+                if(!vertices.contains(Integer.parseInt(record[1]))){
+                    v2 = this.addVertex(T.id, Integer.parseInt(record[1]), T.label, "vertex");
+                    vertices.add(Integer.parseInt(record[1]));
+                }
+                else {
+                    v2 = this.vertices(Integer.parseInt(record[1])).next();
+                }
+                if(vertices.contains(Integer.parseInt(record[0])) && vertices.contains(Integer.parseInt(record[1])) && !edges.contains(new Pair<>(Integer.parseInt(record[0]), Integer.parseInt(record[1])))){
+                    v1.addEdge("edge", v2);
+                    edges.add(new Pair<>(Integer.parseInt(record[0]), Integer.parseInt(record[1])));
+                }
+                System.out.println(record[0] + " "+ record[1] );
+            }
+        } catch (IOException | CsvException e) {
+            e.printStackTrace();
+        }
+        this.labelGraph();
+        bulkloading = false;
+    }
+
+    public void loadGraphSON(String Path) {
+        bulkloading = true;
+        Set<Integer> vertices = new HashSet<>();
+        Set<Pair<Integer, Integer>> edges = new HashSet<>();
+        // open a json file and load the graph
+
+        this.labelGraph();
+        bulkloading = false;
+    }
+
+
     @Override
     public Vertex addVertex(final Object... keyValues) {
         ElementHelper.legalPropertyKeyValueArray(keyValues);
@@ -184,8 +229,8 @@ public class TinkerGraph extends AbstractTinkerGraph {
         addInEdge(inVertex, label, edge);
         inVertex.parents.add(outVertex);
         outVertex.children.add(inVertex);
-        roots.remove(inVertex);;
-
+        roots.remove(inVertex);
+        if (!bulkloading) inVertex.recomputeLabel(new HashSet<>());
         return edge;
     }
 
