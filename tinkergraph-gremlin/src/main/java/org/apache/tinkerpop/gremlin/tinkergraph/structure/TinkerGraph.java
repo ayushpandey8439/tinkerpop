@@ -31,19 +31,17 @@ import org.apache.tinkerpop.gremlin.tinkergraph.process.traversal.strategy.optim
 import org.apache.tinkerpop.gremlin.tinkergraph.process.traversal.strategy.optimization.TinkerGraphStepStrategy;
 import org.apache.tinkerpop.gremlin.tinkergraph.services.TinkerServiceRegistry;
 import org.apache.tinkerpop.gremlin.util.iterator.IteratorUtils;
+import org.apache.tinkerpop.shaded.jackson.core.JsonFactory;
+import org.apache.tinkerpop.shaded.jackson.core.JsonParser;
+import org.apache.tinkerpop.shaded.jackson.core.JsonToken;
+import org.apache.tinkerpop.shaded.jackson.databind.JsonNode;
+import org.apache.tinkerpop.shaded.jackson.databind.ObjectMapper;
 import org.javatuples.Pair;
 
+import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentSkipListSet;
 
@@ -160,22 +158,107 @@ public class TinkerGraph extends AbstractTinkerGraph {
                     v1.addEdge("edge", v2);
                     edges.add(new Pair<>(Integer.parseInt(record[0]), Integer.parseInt(record[1])));
                 }
-                System.out.println(record[0] + " "+ record[1] );
+//                System.out.println(record[0] + " "+ record[1] );
             }
         } catch (IOException | CsvException e) {
             e.printStackTrace();
         }
-        this.labelGraph();
         bulkloading = false;
     }
 
-    public void loadGraphSON(String Path) {
+    public void loadGraphSON(String Path) throws IOException {
         bulkloading = true;
         Set<Integer> vertices = new HashSet<>();
         Set<Pair<Integer, Integer>> edges = new HashSet<>();
-        // open a json file and load the graph
+        JsonFactory jfactory = new JsonFactory();
+        JsonParser jParser = jfactory.createParser(new File(Path));
+        Stack<JsonToken> TokenStack = new Stack<>();
+        boolean vertexMode = false;
+        boolean edgeMode = false;
+        int v=0, e=0;
+        do {
+            JsonToken token = jParser.nextToken();
+            if(token == JsonToken.START_OBJECT && ! vertexMode && ! edgeMode) {
+                TokenStack.push(token);
+                continue;
+            } else if (token == JsonToken.START_ARRAY) {
+                String fieldname = jParser.getCurrentName();
+                if("vertices".equals(fieldname)){
+                    vertexMode = true;
+                    edgeMode = false;
+                    System.out.println("Exploring vertices");
+                }
+                if("edges".equals(fieldname)){
+                    vertexMode = false;
+                    edgeMode = true;
+                    System.out.println("Exploring Edges");
+                }
+                TokenStack.push(token);
+                continue;
+            } else if (token == JsonToken.START_OBJECT && vertexMode) {
+                List<Object> vertexProps = new ArrayList<>();
+                while(jParser.nextToken() != JsonToken.END_OBJECT) {
+                    String fieldname = jParser.getCurrentName();
+                    if ("_id".equals(fieldname)) {
+                        jParser.nextToken();
+                        vertexProps.add(T.id);
+                        vertexProps.add(Integer.parseInt(jParser.getText()));
+                    }
+                    if ("_label".equals(fieldname)) {
+                        jParser.nextToken();
+                        vertexProps.add(T.label);
+                        vertexProps.add(jParser.getText());
+                    }
+                    if (!"_id".equals(fieldname) && !"_label".equals(fieldname)) {
+                        jParser.nextToken();
+                        vertexProps.add(fieldname);
+                        vertexProps.add(jParser.getText());
+                    }
+                }
+//                System.out.println(vertexProps);
+                Vertex vertex = this.addVertex(vertexProps.toArray());
+                vertices.add(Integer.parseInt(vertex.id().toString()));
 
-        this.labelGraph();
+            }
+            else if (token == JsonToken.START_OBJECT && edgeMode) {
+                List<Object> edgeProps = new ArrayList<>();
+                String edgeLabel = "";
+                TinkerVertex outV = null, inV = null;
+                while(jParser.nextToken() != JsonToken.END_OBJECT) {
+                    String fieldname = jParser.getCurrentName();
+                    if ("_id".equals(fieldname)) {
+                        jParser.nextToken();
+                        edgeProps.add(T.id);
+                        edgeProps.add(jParser.getText());
+                    }
+                    if ("_label".equals(fieldname)) {
+                        jParser.nextToken();
+                        edgeLabel = (jParser.getText());
+                    }
+                    if("_inV".equals(fieldname)){
+                        jParser.nextToken();
+                        inV = (TinkerVertex) this.vertices(Integer.parseInt(jParser.getText())).next();
+                    }
+                    if("_outV".equals(fieldname)){
+                        jParser.nextToken();
+                        outV = (TinkerVertex) this.vertices(Integer.parseInt(jParser.getText())).next();
+                    }
+                    if (!"_id".equals(fieldname) && !"_label".equals(fieldname) && !"_inV".equals(fieldname) && !"_outV".equals(fieldname)) {
+                        jParser.nextToken();
+                        edgeProps.add(fieldname);
+                        edgeProps.add(jParser.getText());
+                    }
+                }
+//                System.out.println("Edge : INV "+ inV + " OUTV "+ outV + " Label "+ edgeLabel + " Props "+ edgeProps);
+                this.addEdge(outV, inV, edgeLabel, edgeProps.toArray());
+            }
+            else if (token == JsonToken.END_OBJECT || token == JsonToken.END_ARRAY) {
+                TokenStack.pop();
+            }
+        } while (!TokenStack.isEmpty());
+        jParser.close();
+        System.out.println("Vertices "+ v+ "Edges "+e);
+
         bulkloading = false;
     }
 
