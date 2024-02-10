@@ -66,10 +66,10 @@ public class TinkerGraphLabellingTest {
 
         graph.labelGraph();
         assertEquals(new ArrayList<>(Arrays.asList(1)), ((TinkerVertex) v1).getPathLabel());
-        assertEquals(new ArrayList<>(Arrays.asList(1, 2)), ((TinkerVertex) v2).getPathLabel());
-        assertEquals(new ArrayList<>(Arrays.asList(1, 2, 3)), ((TinkerVertex) v3).getPathLabel());
-        assertEquals(new ArrayList<>(Arrays.asList(1, 2, 3, 4)), ((TinkerVertex) v4).getPathLabel());
-        assertEquals(new ArrayList<>(Arrays.asList(1, 2, 3, 4, 5)), ((TinkerVertex) v5).getPathLabel());
+        assertEquals(new ArrayList<>(Arrays.asList(2)), ((TinkerVertex) v2).getPathLabel());
+        assertEquals(new ArrayList<>(Arrays.asList(2, 3)), ((TinkerVertex) v3).getPathLabel());
+        assertEquals(new ArrayList<>(Arrays.asList(2, 3, 4)), ((TinkerVertex) v4).getPathLabel());
+        assertEquals(new ArrayList<>(Arrays.asList(2, 3, 4, 5)), ((TinkerVertex) v5).getPathLabel());
     }
 
     @Test

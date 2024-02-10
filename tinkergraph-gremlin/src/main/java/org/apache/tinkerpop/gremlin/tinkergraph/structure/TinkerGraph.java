@@ -75,6 +75,7 @@ public class TinkerGraph extends AbstractTinkerGraph {
     protected Map<Object, Vertex> vertices = new ConcurrentHashMap<>();
     protected Map<Object, Edge> edges = new ConcurrentHashMap<>();
     public Set<TinkerVertex> roots = new HashSet<>();
+    public Set<TinkerVertex> sinks = new HashSet<>();
 
     /**
      * An empty private constructor that initializes {@link TinkerGraph}.
@@ -175,26 +176,21 @@ public class TinkerGraph extends AbstractTinkerGraph {
         Stack<JsonToken> TokenStack = new Stack<>();
         boolean vertexMode = false;
         boolean edgeMode = false;
-        int v=0, e=0;
         do {
             JsonToken token = jParser.nextToken();
             if(token == JsonToken.START_OBJECT && ! vertexMode && ! edgeMode) {
                 TokenStack.push(token);
-                continue;
             } else if (token == JsonToken.START_ARRAY) {
                 String fieldname = jParser.getCurrentName();
                 if("vertices".equals(fieldname)){
                     vertexMode = true;
                     edgeMode = false;
-                    System.out.println("Exploring vertices");
                 }
                 if("edges".equals(fieldname)){
                     vertexMode = false;
                     edgeMode = true;
-                    System.out.println("Exploring Edges");
                 }
                 TokenStack.push(token);
-                continue;
             } else if (token == JsonToken.START_OBJECT && vertexMode) {
                 List<Object> vertexProps = new ArrayList<>();
                 while(jParser.nextToken() != JsonToken.END_OBJECT) {
@@ -215,7 +211,6 @@ public class TinkerGraph extends AbstractTinkerGraph {
                         vertexProps.add(jParser.getText());
                     }
                 }
-//                System.out.println(vertexProps);
                 Vertex vertex = this.addVertex(vertexProps.toArray());
                 vertices.add(Integer.parseInt(vertex.id().toString()));
 
@@ -249,19 +244,20 @@ public class TinkerGraph extends AbstractTinkerGraph {
                         edgeProps.add(jParser.getText());
                     }
                 }
-//                System.out.println("Edge : INV "+ inV + " OUTV "+ outV + " Label "+ edgeLabel + " Props "+ edgeProps);
-                this.addEdge(outV, inV, edgeLabel, edgeProps.toArray());
+                if(inV != null && outV != null) {
+                    this.addEdge(outV, inV, edgeLabel, edgeProps.toArray());
+                } else {
+                    throw new IllegalArgumentException("Edge cannot be added without both inV and outV");
+                }
             }
             else if (token == JsonToken.END_OBJECT || token == JsonToken.END_ARRAY) {
                 TokenStack.pop();
             }
         } while (!TokenStack.isEmpty());
         jParser.close();
-        System.out.println("Vertices "+ v+ "Edges "+e);
 
         bulkloading = false;
     }
-
 
     @Override
     public Vertex addVertex(final Object... keyValues) {
@@ -280,6 +276,7 @@ public class TinkerGraph extends AbstractTinkerGraph {
         ElementHelper.attachProperties(vertex, VertexProperty.Cardinality.list, keyValues);
         this.vertices.put(vertex.id(), vertex);
         this.roots.add(vertex);
+        this.sinks.add(vertex);
 
         return vertex;
     }
@@ -288,6 +285,7 @@ public class TinkerGraph extends AbstractTinkerGraph {
     public void removeVertex(final Object vertexId)
     {
         this.vertices.remove(vertexId);
+
     }
 
     @Override
@@ -313,6 +311,7 @@ public class TinkerGraph extends AbstractTinkerGraph {
         inVertex.parents.add(outVertex);
         outVertex.children.add(inVertex);
         roots.remove(inVertex);
+        sinks.remove(outVertex);
         if (!bulkloading) inVertex.recomputeLabel(new HashSet<>());
         return edge;
     }
@@ -328,24 +327,43 @@ public class TinkerGraph extends AbstractTinkerGraph {
 
         if (null != outVertex && null != outVertex.outEdges) {
             final Set<Edge> edges = outVertex.outEdges.get(edge.label());
-            if (null != edges)
+            if (null != edges){
                 edges.removeIf(e -> e.id() == edgeId);
+                outVertex.children.remove(inVertex);
+            }
+            if(edges.isEmpty()) sinks.add(outVertex);
         }
         if (null != inVertex && null != inVertex.inEdges) {
             final Set<Edge> edges = inVertex.inEdges.get(edge.label());
-            if (null != edges)
+            if (null != edges) {
                 edges.removeIf(e -> e.id() == edgeId);
-        }
+                inVertex.parents.remove(outVertex);
+            }
+            if (edges.isEmpty()) roots.add(inVertex);
 
+        }
         this.edges.remove(edgeId);
     }
 
 
     public void labelGraph(){
-        for (TinkerVertex v : roots){
+        if(roots.isEmpty() && sinks.isEmpty()) {
+            // If every vertex has atleast one incoming and one outgoing edge, the graph is connected.
+            // In this case, we can start from any vertex and label the graph.
+            Random generator = new Random();
+            Object[] values = vertices.keySet().toArray();
+            Object randomVertex = values[generator.nextInt(values.length)];
+            TinkerVertex v = (TinkerVertex) vertices.get(randomVertex);
             v.isLabelled = true;
-            v.recomputeLabel(new HashSet<>());
+            v.children.forEach(child -> child.recomputeLabel(new HashSet<>()));
         }
+        else {
+            for (TinkerVertex v : roots){
+                v.isLabelled = true;
+                v.recomputeLabel(new HashSet<>());
+            }
+        }
+
     }
 
     @Override
