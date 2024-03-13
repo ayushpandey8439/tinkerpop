@@ -39,7 +39,6 @@ public class TinkerVertex extends TinkerElement implements Vertex {
     List<Object> pathLabel = new ArrayList<>();
     Set<TinkerVertex> parents = new HashSet<>();
     Set<TinkerVertex> children = new HashSet<>();
-    Set<TinkerVertex> criticalAncestors = new HashSet<>();
     boolean isLabelled = false;
 
     protected Map<String, List<VertexProperty>> properties;
